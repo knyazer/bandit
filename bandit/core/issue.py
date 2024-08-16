@@ -31,6 +31,7 @@ class Cwe:
     IMPROPER_CHECK_OF_EXCEPT_COND = 703
     INCORRECT_PERMISSION_ASSIGNMENT = 732
     INAPPROPRIATE_ENCODING_FOR_OUTPUT_CONTEXT = 838
+    HARDCODED_SECRETS = 798
 
     MITRE_URL_PATTERN = "https://cwe.mitre.org/data/definitions/%s.html"
 
@@ -50,11 +51,7 @@ class Cwe:
         return "CWE-%i (%s)" % (self.id, self.link())
 
     def as_dict(self):
-        return (
-            {"id": self.id, "link": self.link()}
-            if self.id != Cwe.NOTSET
-            else {}
-        )
+        return {"id": self.id, "link": self.link()} if self.id != Cwe.NOTSET else {}
 
     def as_jsons(self):
         return str(self.as_dict())
@@ -105,10 +102,7 @@ class Issue:
         self.linerange = []
 
     def __str__(self):
-        return (
-            "Issue: '%s' from %s:%s: CWE: %s, Severity: %s Confidence: "
-            "%s at %s:%i:%i"
-        ) % (
+        return ("Issue: '%s' from %s:%s: CWE: %s, Severity: %s Confidence: " "%s at %s:%i:%i") % (
             self.text,
             self.test_id,
             (self.ident or self.test),
@@ -132,10 +126,7 @@ class Issue:
             "test",
             "test_id",
         ]
-        return all(
-            getattr(self, field) == getattr(other, field)
-            for field in match_types
-        )
+        return all(getattr(self, field) == getattr(other, field) for field in match_types)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -161,9 +152,9 @@ class Issue:
 
         """
         rank = constants.RANKING
-        return rank.index(self.severity) >= rank.index(
-            severity
-        ) and rank.index(self.confidence) >= rank.index(confidence)
+        return rank.index(self.severity) >= rank.index(severity) and rank.index(
+            self.confidence
+        ) >= rank.index(confidence)
 
     def get_code(self, max_lines=3, tabbed=False):
         """Gets lines of code from a file the generated this issue.
