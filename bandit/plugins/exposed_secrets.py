@@ -10,58 +10,74 @@ from bandit.core import test_properties as test
 _UNMATCHABLE_REGEX = re.compile(r"\b\B")
 
 
-def _regex_wrap(regex: str) -> str:
-    # first step: add boundary tokens
-    regex = r"\b" + regex + r"\b"
-    # TODO: ignore 'xxxxxx' and 'EXAMPLE' with lookahead
-    return regex
+@functools.cache
+def _get_ignore_list(filename: str = "new_secrets.toml") -> list[re.Pattern]:
+    with Path(__file__).with_name(filename).open("rb") as f:
+        contents = tomllib.load(f)
+
+    # Compile the reject rules into regex patterns
+    return [re.compile(rule, re.IGNORECASE) for rule in contents.get("reject-rules", [])]
+
+
+_IGNORE_LIST = _get_ignore_list()
 
 
 class _Secret:
     # Specifies a particular secret, without storing the actual secret string
-    name: str  # short name, e.g. AWS Cloud
-    regex: str  # this is a partial (raw) regex, meaning no boundary tokens
-    false_positive_rate: float  # 1 -> very bad, 0 -> very good
+    id: str  # unique identifier for the secret
+    description: str  # description of the secret
+    regex: re.Pattern  # compiled regex pattern for the secret
+    severity: str  # severity level
 
-    def __init__(self, name: str, regex: str | None = None, false_positive_rate: float = 1.0):
-        self.name = name
-        if regex is not None:
-            self.regex = re.compile(_regex_wrap(regex))
-        else:
-            self.regex = _UNMATCHABLE_REGEX
-        self.false_positive_rate = false_positive_rate
+    def __init__(self, id: str, description: str, regex: str, severity: str):
+        self.id = id
+        self.description = description
+        self.regex = re.compile(regex, re.IGNORECASE) if regex else _UNMATCHABLE_REGEX
+        self.severity = severity
 
 
-_GENERIC_SECRET = _Secret("generic")
+_GENERIC_SECRET = _Secret("generic", "Generic secret", regex="", severity="high")
 
 
 def _make_issue(secret_spec: _Secret):
-    confidence = bandit.LOW
-    if secret_spec.false_positive_rate < 0.1:
-        confidence = bandit.MEDIUM
-    if secret_spec.false_positive_rate < 0.01:
-        confidence = bandit.HIGH
+    severity = getattr(bandit, secret_spec.severity.upper(), bandit.HIGH)
     return bandit.Issue(
-        severity=bandit.HIGH,  # any leaked keys are critically bad
-        confidence=confidence,
-        cwe=issue.Cwe.NOTSET,
-        text=f"{secret_spec.name} secret is stored in a string.",
+        severity=severity,
+        confidence=bandit.HIGH,  # Any secret detection will now have high confidence
+        cwe=issue.Cwe.HARDCODED_SECRETS,
+        text=f"{secret_spec.id} ({secret_spec.description}) secret is stored in a string.",
     )
 
 
 @functools.cache
-def _get_database(filename: str = "secrets.toml") -> list[_Secret]:
+def _get_database(filename: str = "new_secrets.toml") -> list[_Secret]:
     # Loads the file with regexes; uses cache
     with Path(__file__).with_name(filename).open("rb") as f:
         contents = tomllib.load(f)
-    # contents is {'name': {'regex': ..., 'false_positive_rate': ..., ...}, ...}
-    db = [_Secret(name=key, **val) for key, val in contents.items()]
+
+    # contents is {'rules': [{'id': ..., 'description': ..., 'regex': ..., 'severity': ...}, ...]}
+    rules = contents.get("rules", [])
+    db = [
+        _Secret(rule["id"], rule["description"], rule["regex"], rule["severity"]) for rule in rules
+    ]
+
     # remove all the secrets that are unmatchable
     db = [secret for secret in db if secret.regex != _UNMATCHABLE_REGEX]
     return db
 
 
+def _is_ignored(string_to_check: str) -> bool:
+    # Check if the string matches any ignore pattern
+    for pattern in _IGNORE_LIST:
+        if re.search(pattern, string_to_check):
+            return True
+    return False
+
+
 def _detect_secrets(string_to_check: str) -> list[_Secret]:
+    if _is_ignored(string_to_check):
+        return []
+
     db = _get_database()
     return [secret for secret in db if re.search(secret.regex, string_to_check) is not None]
 
