@@ -1,5 +1,5 @@
-import re
 import functools
+import re
 import tomllib
 from pathlib import Path
 
@@ -34,7 +34,9 @@ class _Secret:
         self.severity = severity
 
 
-_GENERIC_SECRET = _Secret("generic", "Generic secret", regex="", severity="high")
+_GENERIC_SECRET = _Secret(
+    "generic", "Generic secret", regex="", severity="high"
+)
 
 
 def _make_issue(secret_spec: _Secret):
@@ -54,7 +56,10 @@ def _get_database(filename: str = _config_filename) -> list[_Secret]:
     # contents is {'rules': [{'id': ..., 'description': ..., 'regex': ..., 'severity': ...}, ...]}
     rules = contents.get("rules", [])
     db = [
-        _Secret(rule["id"], rule["description"], rule["regex"], rule["severity"]) for rule in rules
+        _Secret(
+            rule["id"], rule["description"], rule["regex"], rule["severity"]
+        )
+        for rule in rules
     ]
 
     # remove all the secrets that are unmatchable
